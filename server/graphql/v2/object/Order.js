@@ -1,4 +1,4 @@
-import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { GraphQLInt, GraphQLObjectType, GraphQLString } from 'graphql';
 // import { GraphQLInt } from 'graphql';
 import { GraphQLDateTime } from 'graphql-iso-date';
 
@@ -102,6 +102,13 @@ export const Order = new GraphQLObjectType({
             CollectiveId: order.CollectiveId,
           });
           return { value, currency: order.currency };
+        },
+      },
+      // needed for recurring contributions work, but we should update to encoded id and write v2 payment method object soon
+      legacyPaymentMethodId: {
+        type: GraphQLInt,
+        resolve(order) {
+          return order.PaymentMethodId;
         },
       },
     };
