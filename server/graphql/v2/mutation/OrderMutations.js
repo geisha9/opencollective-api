@@ -1,12 +1,11 @@
-import { GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql';
+import { GraphQLEnumType, GraphQLInt, GraphQLNonNull, GraphQLString } from 'graphql';
 
 import activities from '../../../constants/activities';
 import status from '../../../constants/order_status';
 import models from '../../../models';
-import { setupCreditCard } from '../../../paymentProviders/stripe/creditcard';
 import { NotFound, Unauthorized } from '../../errors';
+import { OrderFrequency } from '../enum';
 import { getDecodedId } from '../identifiers';
-import { NewPaymentMethodInput } from '../input/NewPaymentMethodInput';
 import { OrderReferenceInput } from '../input/OrderReferenceInput';
 import { PaymentMethodReferenceInput } from '../input/PaymentMethodReferenceInput';
 import { Order } from '../object/Order';
@@ -130,21 +129,9 @@ const orderMutations = {
         type: new GraphQLNonNull(OrderReferenceInput),
         description: 'Object matching the OrderReferenceInput (id)',
       },
-      amount: {
-        type: GraphQLInt,
-        description: 'Amount in cents of the order',
-      },
-      frequency: {
-        type: GraphQLString,
-        description: 'Frequency of the recurring order, either MONTHLY or YEARLY',
-      },
-      tier: {
-        type: GraphQLString,
-        description: 'The tier of the recurring contribution, like Backer or Sponsor',
-      },
       paymentMethod: {
         type: PaymentMethodReferenceInput,
-        description: 'Object matching the PaymentMethodReferenceInput (uuid)',
+        description: 'Reference to a Payment Method to update the order with',
       },
     },
     async resolve(_, args, req) {
@@ -160,7 +147,7 @@ const orderMutations = {
         where: {
           id: decodedId,
         },
-        include: [{ model: models.Subscription }, { model: models.PaymentMethod, as: 'paymentMethod' }],
+        include: [{ model: models.Subscription }],
       };
 
       let order = await models.Order.findOne(query);
@@ -179,12 +166,12 @@ const orderMutations = {
       if (paymentMethod !== undefined) {
         // unlike v1 we don't have to check/assign new payment method, that will be taken care of in another mutation
         const newPaymentMethod = await models.PaymentMethod.findOne({
-          where: { uuid: paymentMethod.uuid },
+          where: { id: paymentMethod.legacyId },
         });
         if (!newPaymentMethod) {
-          throw new Error('Payment method not found with this uuid', paymentMethod.uuid);
+          throw new Error('Payment method not found with this id', paymentMethod.legacyId);
         }
-        if (!req.remoteUser.isAdmin(paymentMethod.CollectiveId)) {
+        if (!req.remoteUser.isAdmin(newPaymentMethod.CollectiveId)) {
           throw new Unauthorized("You don't have permission to use this payment method");
         }
 
@@ -192,52 +179,6 @@ const orderMutations = {
       }
 
       return order;
-    },
-  },
-  addPaymentMethod: {
-    type: Order,
-    description: 'Add a new payment method to be used with an Order',
-    args: {
-      newPaymentMethod: {
-        type: NewPaymentMethodInput,
-        description: 'Object matching the NewPaymentMethodInput',
-      },
-    },
-    async resolve(_, args, req) {
-      const collective = await models.Collective.findByPk(req.remoteUser.CollectiveId);
-      if (!collective) {
-        throw Error('This collective does not exist');
-      }
-
-      const { newPaymentMethod } = args;
-
-      const newPaymentMethodData = {
-        ...newPaymentMethod,
-        service: newPaymentMethod.service || 'stripe',
-        CreatedByUserId: req.remoteUser.id,
-        currency: args.currency || collective.currency,
-        saved: true,
-        CollectiveId: req.remoteUser.CollectiveId,
-      };
-
-      let pm = await models.PaymentMethod.create(newPaymentMethodData);
-
-      try {
-        pm = await setupCreditCard(pm, {
-          collective,
-          user: req.remoteUser,
-        });
-      } catch (error) {
-        if (!error.stripeResponse) {
-          throw error;
-        }
-
-        pm.stripeError = {
-          message: error.message,
-          response: error.stripeResponse,
-        };
-      }
-      return pm;
     },
   },
 };

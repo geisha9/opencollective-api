@@ -1,15 +1,11 @@
-import { GraphQLInputObjectType, GraphQLInt, GraphQLString } from 'graphql';
+import { GraphQLInputObjectType, GraphQLInt } from 'graphql';
 
 export const PaymentMethodReferenceInput = new GraphQLInputObjectType({
   name: 'PaymentMethodReferenceInput',
   fields: () => ({
-    uuid: {
-      type: GraphQLString,
-      description: 'The uuid string assigned to the payment method',
-    },
-    CollectiveId: {
+    legacyId: {
       type: GraphQLInt,
-      description: 'The Collective Id that owns the payment method',
+      description: 'The legacy id assigned to the payment method',
     },
   }),
 });
